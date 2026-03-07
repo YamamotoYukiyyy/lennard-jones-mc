@@ -10,6 +10,17 @@ import japanize_matplotlib  # グラフタイトル等の日本語表示用
 from pathlib import Path
 from matplotlib.animation import FuncAnimation
 
+from lj_core import (
+    build_neighbor_state,
+    calc_energy,
+    init_positions,
+    normalize_neighbor_options,
+    validate_common_parameters,
+    validate_initial_density,
+    update_neighbor_state_after_move,
+    wrap_positions,
+)
+
 # ============== パラメータ（ここで変更可能） ==============
 T = 1.0              # 温度（無次元）
 N_STEPS = 10_000     # モンテカルロステップ数
@@ -22,6 +33,10 @@ VISUALIZE_INTERVAL = 100   # 可視化の更新間隔（ステップ）
 SAVE_ANIMATION = False     # Trueでアニメーションをファイルに保存
 SAVE_FINAL_IMAGE = True    # Trueで最終配置をPNGに保存
 INTERACTIVE = True         # FalseでGUI表示をスキップ（画像保存のみ、CI等で使用）
+USE_CUTOFF = False         # Trueでcutoffを使う
+CUTOFF_RADIUS = 3.0        # cutoff半径（sigma=1単位系）
+USE_CELL_LIST = False      # Trueでcell listを使う
+CELL_SIZE = 3.0            # cell listのセルサイズ
 # ========================================================
 
 OUTPUT_DIR = Path(__file__).resolve().parent
@@ -29,106 +44,37 @@ OUTPUT_DIR = Path(__file__).resolve().parent
 
 def validate_parameters():
     """実行前に主要パラメータの妥当性を確認する"""
-    if T <= 0:
-        raise ValueError(f'T must be positive, got {T}')
-    if N <= 0:
-        raise ValueError(f'N must be positive, got {N}')
-    if N_STEPS <= 0:
-        raise ValueError(f'N_STEPS must be positive, got {N_STEPS}')
-    if DELTA_MAX <= 0:
-        raise ValueError(f'DELTA_MAX must be positive, got {DELTA_MAX}')
-    if BOX_SIZE <= 0:
-        raise ValueError(f'BOX_SIZE must be positive, got {BOX_SIZE}')
-    if EPSILON < 0:
-        raise ValueError(f'EPSILON must be non-negative, got {EPSILON}')
-    if SIGMA <= 0:
-        raise ValueError(f'SIGMA must be positive, got {SIGMA}')
+    validate_common_parameters(
+        temperature=T,
+        n_particles=N,
+        n_steps=N_STEPS,
+        delta_max=DELTA_MAX,
+        box_size=BOX_SIZE,
+        epsilon=EPSILON,
+        sigma=SIGMA,
+    )
     if VISUALIZE_INTERVAL <= 0:
         raise ValueError(f'VISUALIZE_INTERVAL must be positive, got {VISUALIZE_INTERVAL}')
 
     # 密度の妥当性: ランダム配置が物理的に可能かチェック
     min_init_distance = 0.9 * SIGMA
-    area_per_particle = np.pi * (min_init_distance / 2) ** 2
-    total_required = N * area_per_particle
-    # ランダム配置では packing fraction ~0.5 が限界の目安
-    if total_required > 0.8 * (BOX_SIZE**2):
-        raise ValueError(
-            f'Density too high: N={N} particles with min_distance={min_init_distance:.3f} '
-            f'require area ~{total_required:.1f}, but box has {BOX_SIZE**2:.1f}. '
-            'Increase BOX_SIZE or decrease N.'
-        )
-
-
-def init_positions(box_size: float, n: int, min_distance: float,
-                   rng: np.random.Generator, max_trials: int = 10_000,
-                   max_global_retries: int = 1000) -> np.ndarray:
-    """粒子をランダムに初期配置し、詰まった場合は全体を作り直す"""
-    min_distance_sq = min_distance ** 2
-
-    for _ in range(max_global_retries):
-        pos = np.empty((n, 2), dtype=float)
-
-        for idx in range(n):
-            for _ in range(max_trials):
-                candidate = rng.uniform(0.0, box_size, size=2)
-                if idx == 0:
-                    pos[idx] = candidate
-                    break
-
-                delta = candidate - pos[:idx]
-                delta -= box_size * np.round(delta / box_size)
-                distances_sq = np.sum(delta * delta, axis=1)
-                if np.all(distances_sq >= min_distance_sq):
-                    pos[idx] = candidate
-                    break
-            else:
-                # 局所的に詰まった場合は、初期配置全体を最初から引き直す。
-                break
-        else:
-            return pos
-
-    raise ValueError(
-        f'Failed to place {n} particles with min_distance={min_distance:.3f} '
-        f'in box_size={box_size} after {max_global_retries} attempts. '
-        'Density may be too high.'
+    validate_initial_density(
+        n_particles=N,
+        box_size=BOX_SIZE,
+        min_distance=min_init_distance,
+        dim=2,
+    )
+    normalize_neighbor_options(
+        box_size=BOX_SIZE,
+        use_cutoff=USE_CUTOFF,
+        cutoff_radius=CUTOFF_RADIUS,
+        use_cell_list=USE_CELL_LIST,
+        cell_size=CELL_SIZE,
     )
 
 
-def calc_energy(pos: np.ndarray, i: int, box_size: float, epsilon: float, sigma: float) -> float:
-    """
-    粒子iの、他の全粒子とのLJ相互作用エネルギーの総和を計算
-    周期境界条件（Minimum Image Convention）を適用
-    """
-    energy = 0.0
-    xi, yi = pos[i, 0], pos[i, 1]
-    n = len(pos)
-
-    for j in range(n):
-        if i == j:
-            continue
-        xj, yj = pos[j, 0], pos[j, 1]
-
-        # 周期境界条件: Minimum Image Convention
-        dx = xi - xj
-        dy = yi - yj
-        dx = dx - box_size * np.round(dx / box_size)
-        dy = dy - box_size * np.round(dy / box_size)
-
-        r = np.sqrt(dx * dx + dy * dy)
-        if r < 1e-10:  # 同一位置の回避
-            continue
-
-        # Lennard-Jones 12-6: V(r) = 4ε[(σ/r)^12 - (σ/r)^6]
-        sr = sigma / r
-        sr6 = sr ** 6
-        sr12 = sr6 ** 2
-        energy += 4.0 * epsilon * (sr12 - sr6)
-
-    return energy
-
-
 def mc_step(pos: np.ndarray, box_size: float, T: float, delta_max: float,
-            epsilon: float, sigma: float, rng: np.random.Generator) -> tuple[float, bool]:
+            epsilon: float, sigma: float, rng: np.random.Generator, neighbor_state) -> tuple[float, bool]:
     """
     1回のメトロポリス・モンテカルロステップ
     ランダムに粒子を1つ選び、ランダム変位で移動を試行
@@ -138,7 +84,7 @@ def mc_step(pos: np.ndarray, box_size: float, T: float, delta_max: float,
     i = rng.integers(0, n)
 
     # 移動前のエネルギー
-    E_old = calc_energy(pos, i, box_size, epsilon, sigma)
+    E_old = calc_energy(pos, i, box_size, epsilon, sigma, neighbor_state=neighbor_state)
 
     # ランダム変位
     delta = rng.uniform(-delta_max, delta_max, size=2)
@@ -146,10 +92,11 @@ def mc_step(pos: np.ndarray, box_size: float, T: float, delta_max: float,
     pos[i] += delta
 
     # 周期境界条件: 箱の外に出たら折り返す
-    pos[i] = pos[i] % box_size
+    pos[i] = wrap_positions(pos[i], box_size)
+    update_neighbor_state_after_move(neighbor_state, i, pos_old, pos[i], box_size)
 
     # 移動後のエネルギー
-    E_new = calc_energy(pos, i, box_size, epsilon, sigma)
+    E_new = calc_energy(pos, i, box_size, epsilon, sigma, neighbor_state=neighbor_state)
     dE = E_new - E_old
 
     # メトロポリス判定
@@ -159,7 +106,9 @@ def mc_step(pos: np.ndarray, box_size: float, T: float, delta_max: float,
         return dE, True
 
     # 不採用: 元の位置に戻す
+    pos_new = pos[i].copy()
     pos[i] = pos_old
+    update_neighbor_state_after_move(neighbor_state, i, pos_new, pos_old, box_size)
     return 0.0, False
 
 
@@ -169,21 +118,27 @@ def run_simulation():
 
     # 初期化
     min_init_distance = 0.9 * SIGMA
-    pos = init_positions(BOX_SIZE, N, min_init_distance, rng)
+    pos = init_positions(BOX_SIZE, N, min_init_distance, rng, dim=2)
+    neighbor_state = build_neighbor_state(
+        pos,
+        BOX_SIZE,
+        use_cutoff=USE_CUTOFF,
+        cutoff_radius=CUTOFF_RADIUS,
+        use_cell_list=USE_CELL_LIST,
+        cell_size=CELL_SIZE,
+    )
     energy_history = []
     pos_history = [pos.copy()]
 
     # メインループ
     n_accepted = 0
+    current_energy = sum(calc_energy(pos, i, BOX_SIZE, EPSILON, SIGMA, neighbor_state=neighbor_state) for i in range(N)) / 2
     for step in range(N_STEPS):
-        dE, accepted = mc_step(pos, BOX_SIZE, T, DELTA_MAX, EPSILON, SIGMA, rng)
+        dE, accepted = mc_step(pos, BOX_SIZE, T, DELTA_MAX, EPSILON, SIGMA, rng, neighbor_state)
         if accepted:
             n_accepted += 1
-        if step == 0:
-            E = sum(calc_energy(pos, i, BOX_SIZE, EPSILON, SIGMA) for i in range(N)) / 2
-        else:
-            E = energy_history[-1] + dE
-        energy_history.append(E)
+        current_energy += dE
+        energy_history.append(current_energy)
 
         if (step + 1) % VISUALIZE_INTERVAL == 0:
             pos_history.append(pos.copy())
@@ -259,6 +214,8 @@ def main():
     print('2D Lennard-Jones Monte Carlo Simulation')
     print(f'  温度 T = {T}, 粒子数 N = {N}, ステップ数 = {N_STEPS}')
     print(f'  box_size = {BOX_SIZE}, delta_max = {DELTA_MAX}')
+    print(f'  use_cutoff = {USE_CUTOFF}, cutoff_radius = {CUTOFF_RADIUS}')
+    print(f'  use_cell_list = {USE_CELL_LIST}, cell_size = {CELL_SIZE}')
     print('シミュレーション実行中...')
 
     pos_history, energy_history, n_accepted = run_simulation()

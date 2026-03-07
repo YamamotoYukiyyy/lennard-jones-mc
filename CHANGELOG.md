@@ -126,6 +126,78 @@
 
 ---
 
+## 6. 3次元対応と 3D GEMC の追加
+
+### 6.1 共通ロジックの切り出し
+- **追加ファイル**: `lj_core.py`
+- **内容**:
+  - Minimum Image Convention
+  - 周期境界での座標折り返し
+  - ランダム初期配置
+  - 1 粒子エネルギーと全エネルギー
+  - 挿入エネルギー
+  - 単箱 MC / GEMC 共通のパラメータ検証
+- **目的**: 既存 2D 実装を残したまま、3D 単箱 MC と 3D GEMC で再利用できるようにするため。
+
+### 6.2 既存 2D 実装の維持
+- **対象**: `lennard_jones_mc.py`
+- **対応**:
+  - 既存の 2D 挙動は維持
+  - 初期配置・エネルギー計算・基本検証だけを `lj_core.py` に委譲
+- **目的**: 2D の参照実装を壊さず、共通部だけを整理するため。
+
+### 6.3 3D 単箱 MC の追加
+- **追加ファイル**: `lennard_jones_mc_3d.py`
+- **内容**:
+  - 3 次元座標 `shape = (N, 3)` を使った Metropolis MC
+  - 1 粒子変位 move
+  - 3D 最終配置とエネルギー履歴の可視化
+- **出力**:
+  - `lennard_jones_3d_final.png`
+
+### 6.4 3D GEMC の追加
+- **追加ファイル**: `lennard_jones_gemc_3d.py`
+- **内容**:
+  - 2 箱の状態を `BoxState` で管理
+  - 粒子変位 move
+  - 体積交換 move
+  - 粒子交換 move
+  - 各箱の粒子数・密度・体積・エネルギー履歴を記録
+- **出力**:
+  - `lennard_jones_gemc_3d_final.png`
+
+### 6.5 ドキュメントと作業ログ
+- **README**:
+  - 2D / 3D / GEMC の 3 本立てに再構成
+  - 実行コマンドを絶対パスで明記
+- **作業ログ**:
+  - `WORK_LOG_3D_MC_2026-03-07.md`
+  - `WORK_LOG_GEMC_3D_2026-03-07.md`
+
+### 6.6 cutoff / cell list の追加
+- **対象**:
+  - `lj_core.py`
+  - `lennard_jones_mc.py`
+  - `lennard_jones_mc_3d.py`
+  - `lennard_jones_gemc_3d.py`
+- **追加した切替パラメータ**:
+  - `USE_CUTOFF`
+  - `CUTOFF_RADIUS`
+  - `USE_CELL_LIST`
+  - `CELL_SIZE`
+- **実装内容**:
+  - cutoff なし総当たり
+  - cutoff あり総当たり
+  - cutoff + cell list
+  の 3 モードを共通部で切替可能にした。
+- **補足**:
+  - `cell list` は cutoff を前提にするため、`USE_CELL_LIST=True` でも `USE_CUTOFF=False` の場合は有効化されない。
+- **ログ追加**:
+  - `WORK_LOG_ARGON_VLE_CHECK_2026-03-07.md`
+  - `WORK_LOG_CUTOFF_CELLLIST_2026-03-07.md`
+
+---
+
 ## 現在の主な仕様まとめ
 
 | 項目 | 内容 |
@@ -135,6 +207,8 @@
 | 出力先 | スクリプトと同じディレクトリ（`Path(__file__).resolve().parent`） |
 | 最終状態 | `N_STEPS` が `VISUALIZE_INTERVAL` の倍数でなくても、最終配置を `pos_history` に含めて可視化・保存 |
 | 表示 | 日本語フォント（japanize-matplotlib）、受理率の表示 |
+| 3D 単箱 MC | `lennard_jones_mc_3d.py` として追加 |
+| 3D GEMC | `lennard_jones_gemc_3d.py` として追加 |
 
 ---
 
