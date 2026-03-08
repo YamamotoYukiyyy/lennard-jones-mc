@@ -1,78 +1,78 @@
-# Lennard-Jones Monte Carlo Simulation
+# Lennard-Jones 流体のMonte Carloシミュレーション
 
-A comprehensive suite of Monte Carlo simulations for Lennard-Jones systems, implementing both Python and Rust versions with benchmarking capabilities.
+Lennard-Jones系のMonte Carloシミュレーションの包括的なスイート。PythonとRustの両方の実装とベンチマーク機能を含んでいます。
 
-## Overview
+## 概要
 
-This repository contains three main implementations for Lennard-Jones Monte Carlo simulations:
+このリポジトリには、Lennard-Jones Monte Carloシミュレーションの3つの主要な実装が含まれています：
 
-### 1. **lennard_jones_mc** - Python Implementation
-Pure Python implementation of Lennard-Jones Monte Carlo simulations with support for:
-- Standard MC simulations
-- 3D simulations
+### 1. **lennard_jones_mc** - Python実装
+純粋なPython実装で、以下の機能をサポート：
+- 標準的なMCシミュレーション
+- 3次元シミュレーション
 - Grand Canonical Ensemble (GEMC)
-- Flexible cutoff and cell list implementations
-- Analysis tools for phase diagrams and VLE calculations
+- 柔軟なカットオフとセルリストの実装
+- 相図とVLE計算の解析ツール
 
-### 2. **lennard_jones_mc_rs** - Rust Implementation
-High-performance Rust implementation offering:
-- Fast and efficient simulations
-- Same algorithms as Python version
-- Benchmarking against Python implementation
-- Native performance optimizations
+### 2. **lennard_jones_mc_rs** - Rust実装
+高性能なRust実装で以下を提供：
+- 高速で効率的なシミュレーション
+- Python版と同じアルゴリズム
+- Python版との比較ベンチマーク
+- ネイティブなパフォーマンス最適化
 
-### 3. **lennard_jones_mc_benchmark** - Benchmarking Suite
-Comprehensive benchmarking tools for:
-- Performance comparison between Python and Rust
-- Scaling analysis
-- Memory usage profiling
-- Result validation
+### 3. **lennard_jones_mc_benchmark** - ベンチマークスイート
+包括的なベンチマーキングツール：
+- PythonとRustiの性能比較
+- スケーリング解析
+- メモリ使用量プロファイリング
+- 結果の検証
 
-## Getting Started
+## クイックスタート
 
-### Python Version
+### Python版
 ```bash
 cd lennard_jones_mc
-# Follow instructions in lennard_jones_mc/README.md
+# lennard_jones_mc/README.mdの指示に従ってください
 ```
 
-### Rust Version
+### Rust版
 ```bash
 cd lennard_jones_mc_rs
-# Follow instructions in lennard_jones_mc_rs/README.md
+# lennard_jones_mc_rs/README.mdの指示に従ってください
 ```
 
-### Benchmarking
+### ベンチマーク
 ```bash
 cd lennard_jones_mc_benchmark
-# Follow instructions in lennard_jones_mc_benchmark/README.md
+# lennard_jones_mc_benchmark/README.mdの指示に従ってください
 ```
 
-## Features
+## 主な機能
 
-- **Monte Carlo Simulations**: NVT and Grand Canonical Ensemble implementations
-- **3D Simulations**: Full 3D support for realistic systems
-- **Performance**: Both optimized Python and high-speed Rust versions
-- **Analysis Tools**: Phase diagram generation, VLE calculations
-- **Benchmarking**: Detailed performance comparison and profiling
-- **Flexible Parameters**: Customizable cutoff, cell lists, and system parameters
+- **Monte Carloシミュレーション**: NVTおよびGrand Canonical Ensemble実装
+- **3次元シミュレーション**: 現実的なシステム向けの完全な3D対応
+- **高性能**: 最適化されたPython版と高速なRust版の両方
+- **解析ツール**: 相図生成、VLE計算
+- **ベンチマーキング**: 詳細な性能比較とプロファイリング
+- **柔軟なパラメータ**: カットオフ、セルリスト、システムパラメータのカスタマイズ可能
 
-## Repository Structure
+## リポジトリ構成
 
 ```
 .
-├── lennard_jones_mc/              # Python implementation
-├── lennard_jones_mc_rs/           # Rust implementation
-└── lennard_jones_mc_benchmark/    # Benchmarking tools
+├── lennard_jones_mc/              # Python実装
+├── lennard_jones_mc_rs/           # Rust実装
+└── lennard_jones_mc_benchmark/    # ベンチマーク用ツール
 ```
 
-## License
+## ライセンス
 
-This project is provided as-is for research and educational purposes.
+このプロジェクトは研究および教育目的で提供されています。
 
-## Documentation
+## ドキュメント
 
-For detailed documentation and usage instructions, please refer to the README files in each subdirectory:
-- [Python Implementation Guide](lennard_jones_mc/README.md)
-- [Rust Implementation Guide](lennard_jones_mc_rs/README.md)
-- [Benchmarking Guide](lennard_jones_mc_benchmark/README.md)
+詳細なドキュメントと使用方法については、各サブディレクトリのREADMEファイルを参照してください：
+- [Python実装ガイド](lennard_jones_mc/README.md)
+- [Rust実装ガイド](lennard_jones_mc_rs/README.md)
+- [ベンチマーキングガイド](lennard_jones_mc_benchmark/README.md)
