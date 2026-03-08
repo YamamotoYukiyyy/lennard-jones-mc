@@ -1,0 +1,8 @@
+=== Python / Rust GEMC ベンチマーク (T=114 K, cycles=40000) ===
+
+N のリスト: [20, 40, 60, 80, 100]
+
+出力先: /Users/yamamoto/Desktop/CompPhysHack/exercise/lennard_jones_mc_benchmark
+
+--- N = 20 ---
+  Python 実行中...

@@ -1,0 +1,8 @@
+[package]
+name = "lennard_jones_mc_rs"
+version = "0.1.0"
+edition = "2021"
+description = "3D Lennard-Jones Monte Carlo and Gibbs Ensemble MC in Rust"
+
+[dependencies]
+rand = "0.8"

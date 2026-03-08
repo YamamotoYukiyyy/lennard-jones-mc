@@ -1,0 +1,12 @@
+# Ignore benchmark results and data
+# Benchmark results are excluded
+
+results/
+*.csv
+*.png
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

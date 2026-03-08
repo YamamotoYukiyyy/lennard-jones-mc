@@ -1,0 +1,15 @@
+# Ignore Rust build artifacts and computational results
+# Rust build artifacts and computational results are excluded
+
+results/
+target/
+*.csv
+*.json
+*.png
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo

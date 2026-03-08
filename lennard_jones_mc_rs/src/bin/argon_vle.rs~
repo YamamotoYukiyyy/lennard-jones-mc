@@ -1,0 +1,125 @@
+//! アルゴン気液共存曲線（複数温度）
+//! Chialvo & Horita (2003) 文献条件で複数温度の rho_liq, rho_vap を計算
+
+use lennard_jones_mc_rs::{production_average_phase_density, run_gemc, rho_lj_to_g_cm3, GemcParams};
+use std::fs::File;
+use std::io::Write;
+
+const ARGON_EPSILON_K: f64 = 114.5;
+const ARGON_SIGMA_CM: f64 = 3.374e-8;
+const ARGON_MOLAR_MASS: f64 = 39.948;
+const EQUILIBRATION_FRACTION: f64 = 0.25;
+
+/// 温度 [K] のリスト
+const TEMPERATURES_K: &[f64] = &[84.0, 90.0, 102.0, 114.0, 125.0, 130.0, 136.0, 142.0, 148.0];
+
+fn main() {
+    println!("=== Argon VLE (複数温度) === ");
+    println!("  条件: N=500, cycles=200000, cutoff なし");
+    println!("  温度: {:?} K\n", TEMPERATURES_K);
+
+    let csv_path = "argon_vle_multitemp_rs.csv";
+    let mut csv_file = File::create(csv_path).expect("CSV ファイルを作成できません");
+    writeln!(csv_file, "T_K,T_star,rho_liq_star,rho_vap_star,rho_liq_g_cm3,rho_vap_g_cm3,rho_liq_avg_star,rho_vap_avg_star,rho_liq_avg_g_cm3,rho_vap_avg_g_cm3").expect("ヘッダー書き込み失敗");
+    csv_file.flush().expect("flush 失敗");
+
+    let mut results: Vec<(f64, f64, f64, f64, f64, f64, f64, f64, f64)> = Vec::with_capacity(TEMPERATURES_K.len());
+
+    for (i, &t_k) in TEMPERATURES_K.iter().enumerate() {
+        let t_star = t_k / ARGON_EPSILON_K;
+        println!("--- {}/{}: T = {:.1} K (T* = {:.4}) ---", i + 1, TEMPERATURES_K.len(), t_k, t_star);
+
+        let params = GemcParams {
+            temperature: t_star,
+            n_total: 500,
+            n_cycles: 200_000,
+            delta_max: 0.25,
+            delta_v_max: 8.0,
+            total_density: 0.30,
+            initial_particle_fraction_box1: 0.70,
+            initial_volume_fraction_box1: 0.50,
+            epsilon: 1.0,
+            sigma: 1.0,
+            displacement_tries_per_cycle: 500,
+            transfer_tries_per_cycle: 150,
+        use_cutoff: false,
+        cutoff_radius: None,
+        use_cell_list: false,
+        cell_size: None,
+            rng_seed: 123 + i as u64, // 温度ごとにシードを変えて多様性
+            progress_interval: 1000,
+            sigma_cm: Some(ARGON_SIGMA_CM),
+            molar_mass_g: Some(ARGON_MOLAR_MASS),
+        };
+
+        match run_gemc(&params) {
+            Ok(result) => {
+                let rho_liq = result.rho1_history.last().unwrap().max(*result.rho2_history.last().unwrap());
+                let rho_vap = result.rho1_history.last().unwrap().min(*result.rho2_history.last().unwrap());
+                let rho_liq_g = rho_lj_to_g_cm3(rho_liq, ARGON_SIGMA_CM, ARGON_MOLAR_MASS);
+                let rho_vap_g = rho_lj_to_g_cm3(rho_vap, ARGON_SIGMA_CM, ARGON_MOLAR_MASS);
+
+                let (rho_liq_avg, rho_vap_avg) = production_average_phase_density(&result, EQUILIBRATION_FRACTION);
+                let rho_liq_avg_g = rho_lj_to_g_cm3(rho_liq_avg, ARGON_SIGMA_CM, ARGON_MOLAR_MASS);
+                let rho_vap_avg_g = rho_lj_to_g_cm3(rho_vap_avg, ARGON_SIGMA_CM, ARGON_MOLAR_MASS);
+
+                results.push((t_k, rho_liq, rho_vap, rho_liq_g, rho_vap_g, rho_liq_avg, rho_vap_avg, rho_liq_avg_g, rho_vap_avg_g));
+
+                // 各温度ごとに CSV に追記（途中結果を残す）
+                writeln!(csv_file, "{},{:.6},{:.16},{:.16},{:.16},{:.16},{:.16},{:.16},{:.16},{:.16}",
+                    t_k, t_star, rho_liq, rho_vap, rho_liq_g, rho_vap_g,
+                    rho_liq_avg, rho_vap_avg, rho_liq_avg_g, rho_vap_avg_g).expect("CSV 書き込み失敗");
+                csv_file.flush().expect("flush 失敗");
+
+                // 密度履歴を温度ごとに CSV 保存（収束状況の確認用）
+                let hist_path = format!("argon_vle_density_history_T{:.0}K.csv", t_k);
+                if let Ok(mut hist_file) = File::create(&hist_path) {
+                    writeln!(hist_file, "cycle,rho1,rho2,rho_liq,rho_vap,n1,n2,v1,v2,e1,e2").ok();
+                    for (idx, (r1, r2)) in result.rho1_history.iter().zip(result.rho2_history.iter()).enumerate() {
+                        let rl = r1.max(*r2);
+                        let rv = r1.min(*r2);
+                        let n1 = result.n1_history[idx];
+                        let n2 = result.n2_history[idx];
+                        let v1 = result.v1_history[idx];
+                        let v2 = result.v2_history[idx];
+                        let e1 = result.e1_history[idx];
+                        let e2 = result.e2_history[idx];
+                        writeln!(hist_file, "{},{:.16},{:.16},{:.16},{:.16},{},{},{:.16},{:.16},{:.16},{:.16}",
+                            idx + 1, r1, r2, rl, rv, n1, n2, v1, v2, e1, e2).ok();
+                    }
+                    hist_file.flush().ok();
+                    println!("  密度履歴: {}", hist_path);
+                }
+
+                let n = result.rho1_history.len();
+                let start = (n as f64 * EQUILIBRATION_FRACTION) as usize;
+                println!("  最終状態（瞬間値）:");
+                println!("    rho_liq* = {:.4} ({:.4} g/cm³), rho_vap* = {:.6} ({:.6} g/cm³)",
+                    rho_liq, rho_liq_g, rho_vap, rho_vap_g);
+                println!("  生産相平均（cycle {}-{}, {:.0}%）:",
+                    start + 1, n, (1.0 - EQUILIBRATION_FRACTION) * 100.0);
+                println!("    rho_liq* = {:.4} ({:.4} g/cm³), rho_vap* = {:.6} ({:.6} g/cm³)",
+                    rho_liq_avg, rho_liq_avg_g, rho_vap_avg, rho_vap_avg_g);
+                println!("  計算時間: {:.1} 秒 → {} に追記\n", result.elapsed_secs, csv_path);
+            }
+            Err(e) => {
+                eprintln!("  エラー: {}", e);
+            }
+        }
+    }
+
+    println!("結果を {} に保存しました（各温度ごとに追記済み）", csv_path);
+
+    // サマリ表示（生産相平均）
+    println!("\n=== サマリ（生産相平均） ===");
+    println!("{:>8} {:>10} {:>12} {:>12} {:>12} {:>12}",
+        "T [K]", "T*", "rho_liq*", "rho_vap*", "rho_liq", "rho_vap");
+    println!("{:>8} {:>10} {:>12} {:>12} {:>12} {:>12}",
+        "", "", "", "", "[g/cm³]", "[g/cm³]");
+    println!("{}", "-".repeat(70));
+    for (t_k, _rl, _rv, _rl_g, _rv_g, rl_avg, rv_avg, rl_avg_g, rv_avg_g) in &results {
+        let t_star = t_k / ARGON_EPSILON_K;
+        println!("{:>8.1} {:>10.4} {:>12.4} {:>12.6} {:>12.4} {:>12.6}",
+            t_k, t_star, rl_avg, rv_avg, rl_avg_g, rv_avg_g);
+    }
+}
